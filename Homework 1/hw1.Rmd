@@ -1,0 +1,247 @@
+---
+title:  Homework 1
+author: "[Jacob Carey](mailto:jcarey15@jhu.edu)"
+date:   "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r readin, echo=FALSE}
+load("nmes.rdata")
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+Problem 1
+=========
+
+Model A
+
+```{r p1-a}
+n <- 250
+B.0 <- -2
+B.1 <- 2
+
+set.seed(1337)
+X <- runif(n, 0, 1)
+
+logit <- B.0 + B.1 * X
+y <- rbinom(n, 1, exp(logit)/(1+exp(logit)))
+
+model.A <- data_frame(x=X, y=y, model="A")
+
+model.A %>%
+    ggplot(aes(x=x, y=y)) +
+    geom_jitter(position=position_jitter(height=0.1)) +
+    ggtitle("Model A")
+```
+
+Model B
+
+```{r p1-b}
+n <- 250
+B.0 <- -2
+B.1 <- 4
+
+set.seed(1337)
+X <- runif(n, 0, 1)
+
+logit <- B.0 + B.1 * X
+y <- rbinom(n, 1, exp(logit)/(1+exp(logit)))
+
+model.B <- data_frame(x=X, y=y, model="B")
+
+model.B %>%
+    ggplot(aes(x=x, y=y)) +
+    geom_jitter(position=position_jitter(height=0.1)) +
+    ggtitle("Model B")
+```
+
+```{r p1-table}
+regr <- function(data) {
+    coef <- lm(log.odds~stratum, data=data)$coefficients
+    return(cbind(data, data.frame(pred.log.odds=coef[1] + coef[2]*data$stratum)))
+}
+
+table <- bind_rows(model.A, model.B) %>%
+    # create stratum column using cut function
+    mutate(stratum=cut(x, 0:5/5, labels=0:4/5),
+           stratum=as.numeric(as.character(stratum)),
+           stratum=stratum + 0.1) %>%
+    # group by stratum
+    group_by(stratum, model) %>%
+    # count rows and number y==1 in stratum
+    summarise(n=n(),
+              ones=sum(y == 1)) %>%
+    # calculat p, odds, and log odds
+    mutate(p=ones / n,
+           odds=p / (1 - p),
+           log.odds=log(odds)) %>%
+    group_by(model) %>%
+    do(regr(.)) %>%
+    mutate(pred.p=1/(1+exp(-pred.log.odds))) %>%
+    arrange(model)
+
+knitr::kable(table, digits=2, col.names=c("Model",
+                                          "Stratum of X",
+                                          "n",
+                                          "# Y=1",
+                                          "p",
+                                          "odds",
+                                          "log odds",
+                                          "prediction log odds",
+                                          "predicted p"))
+
+```
+
+Problem 2
+=========
+
+**1a**
+
+```{r 2-1-a}
+data <- nmes %>%
+    tbl_df() %>%
+    filter(eversmk != ".") %>%
+    mutate(mscd=lc5+chd5>0,
+           mscd=as.integer(mscd),
+           eversmk=as.integer(eversmk)) %>%
+    select(age=lastage, mscd, eversmk)
+
+table <- data %>%
+    count(mscd, eversmk) %>%
+    spread(mscd, n)
+
+knitr::kable(table, col.names=c("Ever smoke", "mscd=0", "mscd=1"))
+
+table <- table[, 2:3]
+odds.ratio <- table[1, 1] * table[2, 2] / (table[1, 2] * table[2, 1])[1, ]
+log.or <- log(odds.ratio)
+se.log.or <- sqrt(sum(1/table))
+log.or.ci <- log.or + c(-1, 1) * qnorm(0.975) * se.log.or
+
+```
+
+We see a log odds ratio of `r round(log.or, 2)` with standard error
+`r round(se.log.or, 2)` and 95% confidence interval 
+`r round(log.or.ci, 2)`.
+
+**1b**
+
+```{r 2-1-b}
+model <- glm(mscd ~ eversmk, data=data, family="binomial")
+```
+
+We see a regresion coefficient of `r round(coef(model)[2], 2)` and
+a standard error of `r round(sqrt(diag(vcov(model))), 2)[2]` which are
+similar to above.
+
+**1c**
+
+```{r 2-1-c}
+model <- glm(eversmk ~ mscd, data=data, family="binomial")
+```
+
+We see a regresion coefficient of `r round(coef(model)[2], 2)` and
+a standard error of `r round(sqrt(diag(vcov(model))), 2)[2]` which are
+similar to above.
+
+**1d**
+
+**2a**
+```{r 2-2-a}
+log.or <- function(mscd, eversmk) {
+    tbl <- table(mscd, eversmk)
+    or <- tbl[1, 1] * tbl[2, 2] / (tbl[1, 2] * tbl[2, 1])
+    return(log(or))
+}
+
+var.log.or <- function(mscd, eversmk) {
+    tbl <- table(mscd, eversmk)
+    var.log.or <- sum(1/tbl)
+    return(var.log.or)
+}
+
+table <- bind_rows(data %>%
+    mutate(age.strat=cut(age, c(0, 50, 60, 70, 150),
+                         labels=c("<50", "51-60", "61-70", "70+"))) %>%
+    group_by(age.strat) %>%
+    summarise(log.or=log.or(mscd, eversmk),
+              se.log.or=sqrt(var.log.or(mscd, eversmk))) %>%
+    mutate(inv.var=1/se.log.or^2,
+           weight=inv.var/sum(inv.var)),
+    data %>%
+        mutate(age.strat="Ignoring Age") %>%
+        group_by(age.strat) %>%
+        summarise(log.or=log.or(mscd, eversmk),
+                  se.log.or=sqrt(var.log.or(mscd, eversmk))) %>%
+        mutate(inv.var=1/se.log.or^2,
+               weight=inv.var/sum(inv.var)))
+
+knitr::kable(table, digits=3, col.names=c("Age Stratum",
+                                          "Log OR",
+                                          "Std Error",
+                                          "1/Variance",
+                                          "Weight"))
+```
+
+**2b**
+```{r 2-2-b}
+table <- table %>% filter(age.strat != "Ignoring Age")
+weighted.log.or <- weighted.mean(table$log.or, table$weight)
+weighted.se <- sum(sqrt(1/table$weight))
+```
+
+We calculate the weighted log or as `r round(weighted.log.or, 2)` and
+the standard error as `r round(weighted.se, 2)`.
+
+**2c**
+```{r 2-2-c}
+model <- data %>%
+    mutate(age.strat=cut(age, c(0, 50, 60, 70, 150),
+                         labels=c("<50", "51-60", "61-70", "70+"))) %>%
+    glm(mscd ~ eversmk + age.strat, family="binomial", data=.)
+```
+
+Using logistic regression, we calculate the coefficient and standard
+error as `r round(coef(model)[2], 3)` and 
+`r round(sqrt(diag(vcov(model))), 3)[2]` respectively.
+
+**2d**
+```{r 2-2-d}
+model <- data %>%
+    mutate(age.center=age-60,
+           age.plus=ifelse(age.center>0, age.center, 0),
+           age.cube=age.plus^3) %>%
+    glm(mscd~eversmk+age.center+age.plus+age.cube, 
+        family="binomial", data=.)
+```
+
+Repeating the analysis , we calculate the coefficient and standard
+error as `r round(coef(model)[2], 3)` and 
+`r round(sqrt(diag(vcov(model))), 3)[2]` respectively.
+
+**2e**
+```{r 2-2-e}
+model <- data %>%
+    mutate(age.strat=cut(age, c(0, 50, 60, 70, 150),
+                         labels=c("<50", "51-60", "61-70", "70+"))) %>%
+    glm(eversmk ~ mscd + age.strat, family="binomial", data=.)
+```
+
+Using logistic regression, we calculate the coefficient and standard
+error as `r round(coef(model)[2], 3)` and 
+`r round(sqrt(diag(vcov(model))), 3)[2]` respectively. These numbers are
+fairly close to the estimates in 2d and are the same as 2c.
+
+**2f**
+```{r 2-2-f}
+ggplot(data, aes(x=age, y=mscd)) +
+    geom_jitter(aes(colour=factor(eversmk)),
+                position=position_jitter(height=0.2)) +
+    stat_smooth()
+```
+
+**2g**
+A proposed extended model might...

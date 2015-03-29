@@ -1,0 +1,8 @@
+*.pdf
+*.doc
+*.docx
+*.DS_Store
+*.txt
+*_cache
+*_files
+*.rdata
