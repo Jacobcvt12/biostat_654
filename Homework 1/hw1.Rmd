@@ -190,7 +190,7 @@ knitr::kable(table, digits=3, col.names=c("Age Stratum",
 ```{r 2-2-b}
 table <- table %>% filter(age.strat != "Ignoring Age")
 weighted.log.or <- weighted.mean(table$log.or, table$weight)
-weighted.se <- sum(sqrt(1/table$weight))
+weighted.se <- sqrt(1/sum(table$inv.var))
 ```
 
 We calculate the weighted log or as `r round(weighted.log.or, 2)` and
@@ -237,11 +237,39 @@ fairly close to the estimates in 2d and are the same as 2c.
 
 **2f**
 ```{r 2-2-f}
+model <- data %>%
+    mutate(age.center=age-60,
+           age.plus=ifelse(age.center>0, age.center, 0),
+           age.cube=age.plus^3) %>%
+    glm(mscd~eversmk+age.center+age.plus+age.cube, 
+        family="binomial", data=.)
+
+predicted <- data %>%
+    mutate(age.center=age-60,
+           age.plus=ifelse(age.center>0, age.center, 0),
+           age.cube=age.plus^3) %>%
+    predict(model, .)
+
+data$predicted <- 1/(1+exp(-predicted))
+
 ggplot(data, aes(x=age, y=mscd)) +
     geom_jitter(aes(colour=factor(eversmk)),
-                position=position_jitter(height=0.2)) +
-    stat_smooth()
+                position=position_jitter(height=0.2),
+                alpha=0.4) +
+    stat_smooth(aes(colour=factor(eversmk))) + 
+    geom_line(aes(y=predicted, colour=factor(eversmk)),
+              linetype="dashed")
 ```
 
 **2g**
-A proposed extended model might...
+A proposed extended model might also include an interaction term for
+eversmk.
+```{r 2-2-g}
+ext.model <- data %>%
+    mutate(age.center=age-60,
+           age.plus=ifelse(age.center>0, age.center, 0),
+           age.cube=age.plus^3) %>%
+    glm(mscd~eversmk*(age.center+age.plus+age.cube),
+        family="binomial", data=.)
+
+```
