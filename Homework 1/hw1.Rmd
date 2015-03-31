@@ -8,7 +8,7 @@ output: pdf_document
 ```{r readin, echo=FALSE}
 load("nmes.rdata")
 library(ggplot2)
-library(dplyr)
+library(dplyr, quietly=TRUE)
 library(tidyr)
 knitr::opts_chunk$set(cache=TRUE)
 ```
@@ -95,6 +95,9 @@ knitr::kable(table, digits=2, col.names=c("Model",
 
 ```
 
+Logistic regression estimates the probability of an outcome, via the
+logarithm odds.
+
 Problem 2
 =========
 
@@ -148,6 +151,11 @@ a standard error of `r round(sqrt(diag(vcov(model))), 2)[2]` which are
 similar to above.
 
 **1d**
+
+The logistic regression coefficient estimates the increase in log odds
+of the outcome per unit increase of the covariate. The invariance 
+principle of the odds ratio indicates that odds ratio of an exposure
+and outcome is the same for the reversed expression.
 
 **2a**
 ```{r 2-2-a}
@@ -261,6 +269,9 @@ ggplot(data, aes(x=age, y=mscd)) +
               linetype="dashed")
 ```
 
+There does not appear to be effect modification of the smoking-mscd 
+association by age based on this graph.
+
 **2g**
 A proposed extended model might also include an interaction term for
 eversmk.
@@ -272,4 +283,10 @@ ext.model <- data %>%
     glm(mscd~eversmk*(age.center+age.plus+age.cube),
         family="binomial", data=.)
 
+p.value <- 1 - pchisq(ext.model$deviance - model$deviance,
+                      model$df.residual - ext.model$df.residual)
 ```
+
+The p value from the likelihood ratio test is `r p.value`, indicating that
+the extended model is not better.
+
