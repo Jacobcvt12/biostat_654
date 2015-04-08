@@ -6,11 +6,12 @@ output: pdf_document
 ---
 
 ```{r readin, echo=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
 load("nmes.rdata")
 library(ggplot2)
 library(dplyr, quietly=TRUE)
 library(tidyr)
-knitr::opts_chunk$set(cache=TRUE)
+library(splines)
 ```
 
 Problem 1
@@ -218,12 +219,7 @@ error as `r round(coef(model)[2], 3)` and
 
 **2d**
 ```{r 2-2-d}
-model <- data %>%
-    mutate(age.center=age-60,
-           age.plus=ifelse(age.center>0, age.center, 0),
-           age.cube=age.plus^3) %>%
-    glm(mscd~eversmk+age.center+age.plus+age.cube, 
-        family="binomial", data=.)
+model <- glm(mscd~eversmk + ns(age, 3), data=data, family="binomial")
 ```
 
 Repeating the analysis , we calculate the coefficient and standard
@@ -245,19 +241,17 @@ fairly close to the estimates in 2d and are the same as 2c.
 
 **2f**
 ```{r 2-2-f}
-model <- data %>%
-    mutate(age.center=age-60,
-           age.plus=ifelse(age.center>0, age.center, 0),
-           age.cube=age.plus^3) %>%
-    glm(mscd~eversmk+age.center+age.plus+age.cube, 
-        family="binomial", data=.)
+data <- data %>%
+    bind_cols(., data.frame(ns(.$age, 3))) %>%
+    tbl_df() %>%
+    rename(age.sp.1=X1,
+           age.sp.2=X2,
+           age.sp.3=X3)
 
-predicted <- data %>%
-    mutate(age.center=age-60,
-           age.plus=ifelse(age.center>0, age.center, 0),
-           age.cube=age.plus^3) %>%
-    predict(model, .)
+model <- glm(mscd~eversmk + age.sp.1 + age.sp.2 + age.sp.3, 
+             data=data, family="binomial")
 
+predicted <- model$fitted.values
 data$predicted <- 1/(1+exp(-predicted))
 
 ggplot(data, aes(x=age, y=mscd)) +
@@ -276,14 +270,10 @@ association by age based on this graph.
 A proposed extended model might also include an interaction term for
 eversmk.
 ```{r 2-2-g}
-ext.model <- data %>%
-    mutate(age.center=age-60,
-           age.plus=ifelse(age.center>0, age.center, 0),
-           age.cube=age.plus^3) %>%
-    glm(mscd~eversmk*(age.center+age.plus+age.cube),
-        family="binomial", data=.)
+ext.model <- glm(mscd~eversmk*(age.sp.1+age.sp.2+age.sp.3),
+                 data=data, family="binomial")
 
-p.value <- 1 - pchisq(ext.model$deviance - model$deviance,
+p.value <- 1 - pchisq(model$deviance - ext.model$deviance,
                       model$df.residual - ext.model$df.residual)
 ```
 
