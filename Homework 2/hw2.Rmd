@@ -71,5 +71,10 @@ data <- data %>%
     mutate(prob=predict(model.6, type=c("response")))
 
 roc <- roc(large.exp~prob, data=data)
+auc <- auc(roc)
 plot(roc, legacy.axes=TRUE)
+
+main.effects.model <- glm(large.exp ~ lc5 + chd5 + age + male,
+                          family="binomial", data=data)
+
 ```
