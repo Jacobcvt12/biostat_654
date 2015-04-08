@@ -1,0 +1,75 @@
+---
+title:  Homework 2
+author: "[Jacob Carey](mailto:jcarey15@jhu.edu)"
+date:   "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r readin, echo=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+load("../data/nmes.rdata")
+library(ggplot2)
+library(dplyr, quietly=TRUE)
+library(tidyr)
+library(pROC)
+```
+
+Problem 1
+=========
+```{r p1}
+data <- nmes %>%
+    filter(lastage >= 40) %>%
+    mutate(large.exp=as.integer(totalexp > 2e4)) %>%
+    select(large.exp, lc5, chd5, educate, race=RACE3,
+           male, age=lastage, region=sregion, marital,
+           poverty=povstalb)
+
+model.1 <- glm(large.exp~lc5 + chd5, family="binomial", data=data)
+model.2 <- glm(large.exp~lc5 + chd5 + race + male, 
+               family="binomial", data=data)
+model.3 <- glm(large.exp~lc5 + chd5 + race + male + age, 
+               family="binomial", data=data)
+model.4 <- glm(large.exp~lc5 + chd5 + race + male * age, 
+               family="binomial", data=data)
+model.5 <- glm(large.exp~lc5 + chd5 + race + male * age + factor(poverty),
+               family="binomial", data=data)
+model.6 <- glm(large.exp~lc5 + chd5 + race + male * age + factor(marital),
+               family="binomial", data=data)
+
+p.value.1.2 <- 1 - pchisq(model.1$deviance - model.2$deviance,
+                          model.1$df.residual - model.2$df.residual)
+p.value.1.3 <- 1 - pchisq(model.1$deviance - model.3$deviance,
+                          model.1$df.residual - model.3$df.residual)
+p.value.3.4 <- 1 - pchisq(model.3$deviance - model.4$deviance,
+                          model.3$df.residual - model.4$df.residual)
+p.value.4.5 <- 1 - pchisq(model.4$deviance - model.5$deviance,
+                          model.4$df.residual - model.5$df.residual)
+p.value.4.6 <- 1 - pchisq(model.4$deviance - model.6$deviance,
+                          model.4$df.residual - model.6$df.residual)
+```
+
+Using the likelihood ratio test we calculate the following p values:  
+Comparing model 1 to 2: `r round(p.value.1.2, 4)`  
+Comparing model 1 to 3: `r round(p.value.1.3, 4)`  
+Comparing model 3 to 4: `r round(p.value.3.4, 4)`  
+Comparing model 4 to 5: `r round(p.value.4.5, 4)`  
+Comparing model 4 to 6: `r round(p.value.4.6, 4)`  
+
+Problem 2
+=========
+Based on these calculations, I decided to use model 6, which include
+lc5, chd5, race, male, age, an interaction between male and age, and
+marital status as covariates.
+
+I estimated the following $\beta$ coefficients:
+`r coef(model.6)`.
+
+Problem 3
+=========
+```{r p3}
+data <- data %>%
+    mutate(prob=predict(model.6, type=c("response")))
+
+roc <- roc(large.exp~prob, data=data)
+plot(roc, legacy.axes=TRUE)
+```
