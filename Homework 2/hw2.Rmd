@@ -62,11 +62,37 @@ lc5, chd5, race, male, age, an interaction between male and age, and
 marital status as covariates.
 
 I estimated the following $\beta$ coefficients:
-`r coef(model.6)`.
+`r round(coef(model.6), 4)`.
+
+```{r p2}
+# calculate dffits diagnostic
+diagnostics <- dffits(model.6)
+
+# inspect influential points
+qplot(1:nrow(data), dffits(model.6))
+
+# remove with abs(dffits) > 0.25
+influential <- which(abs(diagnostics) > 0.25)
+
+data.no.inf <- data %>%
+    filter(!row_number() %in% influential)
+
+# refit model
+model.6.refit <- glm(large.exp~lc5 + chd5 + race + 
+                     male * age + factor(marital),
+                     family="binomial", data=data.no.inf)
+```
+
+If we drop these somewhat influential points, we see $\beta$ coefficients
+of `r round(coef(model.6.refit), 4)`.
+
+For the most part, the coefficients did not change _too much_, so I
+decided to keep these points for the rest of the analysis.
 
 Problem 3
 =========
 ```{r p3}
+# all data
 data <- data %>%
     mutate(prob=predict(model.6, type=c("response")))
 
@@ -76,5 +102,47 @@ plot(roc, legacy.axes=TRUE)
 
 main.effects.model <- glm(large.exp ~ lc5 + chd5 + age + male,
                           family="binomial", data=data)
+data <- data %>%
+    mutate(prob.me=predict(main.effects.model, type=c("response")))
+auc.me <- auc(roc(large.exp~prob.me, data=data))
 
+# cross validation
+data <- data %>%
+    mutate(id=1:nrow(data))
+
+train <- data %>%
+    sample_frac(0.5)
+
+test <- setdiff(data, train)
+
+model.final <- glm(large.exp~lc5 + chd5 + race + 
+                   male * age + factor(marital),
+                   family="binomial", data=train)
+model.main <- glm(large.exp ~ lc5 + chd5 + age + male,
+                  family="binomial", data=train)
+train <- train %>%
+    mutate(prob=predict(model.final, type=c("response")),
+           prob.me=predict(model.main, type=c("response")))
+
+test <- test %>%
+    mutate(prob=predict(model.final, type=c("response")),
+           prob.me=predict(model.main, type=c("response")))
+
+auc.train <- auc(roc(large.exp~prob, data=train))
+auc.test <- auc(roc(large.exp~prob, data=test))
+auc.train.me <- auc(roc(large.exp~prob.me, data=train))
+auc.test.me <- auc(roc(large.exp~prob.me, data=test))
+```
+
+Using my final model, I calculated an AUC of `r auc` and with the main
+effects model `r auc.me`.  
+When I performed cross validation, I saw auc
+of `r auc.train` on the training data and `r auc.test` on the test data.  
+For the main effects model, I saw an auc of `r auc.train.me` and 
+`r auc.test.me` on the training and test data respectively.
+
+Part 2
+======
+```{r part2}
+library(survival)
 ```
