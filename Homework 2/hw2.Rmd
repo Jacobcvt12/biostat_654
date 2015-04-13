@@ -94,7 +94,7 @@ Problem 3
 ```{r p3}
 # all data
 data <- data %>%
-    mutate(prob=predict(model.6, type=c("response")))
+    mutate(prob=predict(model.6, newdata=data, type=c("response")))
 
 roc <- roc(large.exp~prob, data=data)
 auc <- auc(roc)
@@ -103,7 +103,9 @@ plot(roc, legacy.axes=TRUE)
 main.effects.model <- glm(large.exp ~ lc5 + chd5 + age + male,
                           family="binomial", data=data)
 data <- data %>%
-    mutate(prob.me=predict(main.effects.model, type=c("response")))
+    mutate(prob.me=predict(main.effects.model, 
+                           newdata=data, type=c("response")))
+
 auc.me <- auc(roc(large.exp~prob.me, data=data))
 
 # cross validation
@@ -121,12 +123,12 @@ model.final <- glm(large.exp~lc5 + chd5 + race +
 model.main <- glm(large.exp ~ lc5 + chd5 + age + male,
                   family="binomial", data=train)
 train <- train %>%
-    mutate(prob=predict(model.final, type=c("response")),
-           prob.me=predict(model.main, type=c("response")))
+    mutate(prob=predict(model.final, newdata=train, type=c("response")),
+           prob.me=predict(model.main, newdata=train, type=c("response")))
 
 test <- test %>%
-    mutate(prob=predict(model.final, type=c("response")),
-           prob.me=predict(model.main, type=c("response")))
+    mutate(prob=predict(model.final, newdata=test, type=c("response")),
+           prob.me=predict(model.main, newdata=test, type=c("response")))
 
 auc.train <- auc(roc(large.exp~prob, data=train))
 auc.test <- auc(roc(large.exp~prob, data=test))
@@ -140,6 +142,18 @@ When I performed cross validation, I saw auc
 of `r auc.train` on the training data and `r auc.test` on the test data.  
 For the main effects model, I saw an auc of `r auc.train.me` and 
 `r auc.test.me` on the training and test data respectively.
+
+Problem 4
+=========
+In order to predict whether or not someone will have a large expenditure
+(defined as a medical expenditure more than 20,000 dollars), we fit
+a logistic regression model to our dataset. We found that this model
+performs well, predicting that someone with a large expenditure has
+a higher probability of this large expenditure than someone without
+a large expenditure `r round(auc.test * 100, 2)`% of the time in a cross
+validation. However we decided on variables to keep in the model using 
+the full model. Future work should base these decisions only on training
+data.
 
 Part 2
 ======
