@@ -5,13 +5,20 @@ date:   "`r Sys.Date()`"
 output: pdf_document
 ---
 
+```{r chunks, echo=FALSE}
+knitr::opts_chunk$set(cache=TRUE,
+                      fig.width=6,
+                      fig.height=4)
+```
+
+
 ```{r readin, echo=FALSE}
-knitr::opts_chunk$set(cache=TRUE)
 load("../data/nmes.rdata")
 library(ggplot2)
-library(dplyr, quietly=TRUE)
+library(dplyr)
 library(tidyr)
 library(pROC)
+theme_set(theme_classic())
 ```
 
 Problem 1
@@ -157,6 +164,85 @@ data.
 
 Part 2
 ======
-```{r part2}
+```{r part2, echo=FALSE}
 library(survival)
+data <- read.table("endometrial-cancer-breslow-day.txt") %>%
+    tbl_df() %>%
+    rename(set=V1, case=V2, age=V3, age.group=V4, estrogen=V5,
+           gall.disease=V6, hypertension=V7, obesity=V8, non.est=V9) %>%
+    # code disease to 0/1
+    mutate(estrogen=estrogen - 1,
+           gall.disease = gall.disease - 1,
+           hypertension = hypertension - 1,
+           obesity = obesity - 1,
+           non.est = non.est - 1,
+           # make obesity a factor
+           obesity=factor(obesity),
+           # id variable
+           id=1:n())
+    
+# 1-1 design
+data.1 <- data %>%
+    group_by(set) %>%
+    filter(id <= min(id) + 1) 
+
+model.1.a <- clogit(case ~ estrogen + gall.disease + 
+                    hypertension + strata(set), data=data.1)
+model.1.b <- clogit(case ~ (estrogen + gall.disease + hypertension) *
+                    (age) + strata(set), data=data.1)
+model.1.c <- clogit(case ~ estrogen + gall.disease + hypertension *
+                    (obesity) + strata(set), data=data.1)
+model.1.d <- clogit(case ~ estrogen * gall.disease + hypertension *
+                    (age) + strata(set), data=data.1)
+model.1.e <- clogit(case ~ estrogen + gall.disease * 
+                      hypertension + strata(set), data=data.1)
+
+# 1 - 4 design
+model.4.a <- clogit(case ~ estrogen + gall.disease + 
+                    hypertension + strata(set), data=data)
+model.4.b <- clogit(case ~ (estrogen + gall.disease + hypertension) *
+                    (age) + strata(set), data=data)
+model.4.c <- clogit(case ~ estrogen + gall.disease + hypertension *
+                    (obesity) + strata(set), data=data)
+model.4.d <- clogit(case ~ estrogen * gall.disease + hypertension *
+                    (age) + strata(set), data=data)
+model.4.e <- clogit(case ~ estrogen + gall.disease * 
+                      hypertension + strata(set), data=data)
+# summary(model.4.a)$logtest
+# summary(model.4.b)$logtest
+# summary(model.4.c)$logtest
+# summary(model.4.d)$logtest
+# summary(model.4.e)$logtest
+```
+
+\newpage
+Using a matched case control study to study the effect of estrogen use on endometrial cancer. The data contained 63 matched sets, where cases were matched to 4 controls by being alive in the same community at the time of the case was diagnosed, having age within 1 year, same marital status and entering the community at roughly the same time.
+
+```{r fig1, echo=FALSE}
+est <- data %>%
+    group_by(set) %>%
+    summarise(estrogen.users=sum(estrogen))
+
+data <- data %>%
+    left_join(est, by="set")
+
+ggplot(data, aes(x=reorder(set, -age, median), y=age)) +
+    geom_boxplot(aes(colour=factor(estrogen.users))) +
+    xlab("") +
+    ylab("Age") +
+    ggtitle("Figure 1") +
+    scale_x_discrete(breaks=NULL) +
+#     theme_classic() +
+    labs(colour="Estrogen Users")
+```
+
+As is shown above, and is expected from the description of the data, the age of the participants in a group
+appear to be within one year of each other. Additionally, the data seem to be evenly distributed by age, and 
+the number of estrogen users within a group also seems evenly distributed by age.
+
+```{r fig2, echo=FALSE}
+ggplot(data, aes(x=age, y=case)) +
+    geom_jitter(aes(colour=factor(estrogen))) +
+    ggtitle("Figure 2")
+#     theme_classic()
 ```
