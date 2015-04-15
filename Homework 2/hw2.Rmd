@@ -227,7 +227,6 @@ a.b <- lrt(model.4.a, model.4.b)
 a.c <- lrt(model.4.a, model.4.c)
 a.d <- lrt(model.4.a, model.4.d)
 d.e <- lrt(model.4.d, model.4.e)
-
 ```
 
 \newpage
@@ -282,16 +281,17 @@ var <- c("Obesity", "\\hspace*{1em}Not Obese", "\\hspace*{1em}Obese",
 
 coef.4 <- coef(model.4.d)
 coef.4[6] <- sum(coef.4[c(1:2, 6)])
-coef.4 <- exp(coef.4)
-ci.4 <- confint(model.4.d)
-ci.4[6, 1] <- sum(ci.4[c(1:2, 6), 1])
-ci.4[6, 2] <- sum(ci.4[c(1:2, 6), 2])
-ci.4 <- exp(ci.4)
+vcov <- vcov(model.4.d)
+X <- diag(length(coef.4))
+X[length(coef.4), ] <- c(1, 1, 0, 0, 0, 1)
 or.all.4 <- character(length(coef.4))
 
 for (i in 1:length(coef.4)) {
+    se <- sqrt(t(X[i, ]) %*% vcov %*% X[i, ])
     or.all.4[i] <- sprintf("%3.2f (%3.2f, %3.2f)", 
-                           coef.4[i], ci.4[i, 1], ci.4[i, 2])
+                           exp(coef.4[i]), 
+                           exp(coef.4[i] - 1.96 * se),
+                           exp(coef.4[i] + 1.96 * se))
 }
 
 or.4 <- c("", "Reference", or.all.4[4], or.all.4[5],
@@ -310,16 +310,15 @@ confidence intervals were much wider.
 ```{r tbl2, echo=FALSE}
 coef.1 <- coef(model.1.d)
 coef.1[6] <- sum(coef.1[c(1:2, 6)])
-coef.1 <- exp(coef.1)
-ci.1 <- confint(model.1.d)
-ci.1[6, 1] <- sum(ci.1[c(1:2, 6), 1])
-ci.1[6, 2] <- sum(ci.1[c(1:2, 6), 2])
-ci.1 <- exp(ci.1)
+vcov <- vcov(model.1.d)
 or.all.1 <- character(length(coef.1))
 
 for (i in 1:length(coef.1)) {
+    se <- sqrt(t(X[i, ]) %*% vcov %*% X[i, ])
     or.all.1[i] <- sprintf("%3.2f (%3.2f, %3.2f)", 
-                           coef.1[i], ci.1[i, 1], ci.1[i, 2])
+                           exp(coef.1[i]), 
+                           exp(coef.1[i] - 1.96 * se),
+                           exp(coef.1[i] + 1.96 * se))
 }
 
 or.1 <- c("", "Reference", or.all.1[4], or.all.1[5],
@@ -332,8 +331,8 @@ knitr::kable(tbl.1, col.names=c("Variable", "Odds Ratio"),
 ```
 
 In either case, we found that estrogen use increased the odds of 
-endometrial cancer. However, this associated was only statistically
-significant in the 1-4 matching.
+endometrial cancer. This association was statistically
+significant in both the 1-4 matching and 1-1 matching.
 
 \newpage
 
@@ -431,24 +430,27 @@ var <- c("Obesity", "\\hspace*{1em}Not Obese", "\\hspace*{1em}Obese",
          "\\hspace*{1em}Unknown",
          "Estrogen and Gallbladder Disease", 
          "\\hspace*{1em}Neither", "\\hspace*{1em}Estrogen Only", 
-         "\\hspace*{1em}Gallbladder Disease Only", "\\hspace*{1em}Both")
+         "\\hspace*{1em}Gallbladder Disease Only", "\\hspace*{1em}Both",
+         "Hypertension")
 
 coef.4 <- coef(model.4.d)
 coef.4[6] <- sum(coef.4[c(1:2, 6)])
-coef.4 <- exp(coef.4)
-ci.4 <- confint(model.4.d)
-ci.4[6, 1] <- sum(ci.4[c(1:2, 6), 1])
-ci.4[6, 2] <- sum(ci.4[c(1:2, 6), 2])
-ci.4 <- exp(ci.4)
+vcov <- vcov(model.4.d)
+X <- diag(length(coef.4))
+X[length(coef.4), ] <- c(1, 1, 0, 0, 0, 1)
 or.all.4 <- character(length(coef.4))
 
 for (i in 1:length(coef.4)) {
+    se <- sqrt(t(X[i, ]) %*% vcov %*% X[i, ])
     or.all.4[i] <- sprintf("%3.2f (%3.2f, %3.2f)", 
-                           coef.4[i], ci.4[i, 1], ci.4[i, 2])
+                           exp(coef.4[i]), 
+                           exp(coef.4[i] - 1.96 * se),
+                           exp(coef.4[i] + 1.96 * se))
 }
 
 or.4 <- c("", "Reference", or.all.4[4], or.all.4[5],
-          "", "Reference", or.all.4[1], or.all.4[2], or.all.4[6])
+          "", "Reference", or.all.4[1], or.all.4[2], or.all.4[6],
+          or.all.4[3])
 
 tbl.4 <- data.frame(var=var, or=or.4, stringsAsFactors=FALSE)
 knitr::kable(tbl.4, col.names=c("Variable", "Odds Ratio"),
@@ -456,40 +458,20 @@ knitr::kable(tbl.4, col.names=c("Variable", "Odds Ratio"),
 
 coef.1 <- coef(model.1.d)
 coef.1[6] <- sum(coef.1[c(1:2, 6)])
-coef.1 <- exp(coef.1)
-ci.1 <- confint(model.1.d)
-ci.1[6, 1] <- sum(ci.1[c(1:2, 6), 1])
-ci.1[6, 2] <- sum(ci.1[c(1:2, 6), 2])
-ci.1 <- exp(ci.1)
+vcov <- vcov(model.1.d)
 or.all.1 <- character(length(coef.1))
 
 for (i in 1:length(coef.1)) {
+    se <- sqrt(t(X[i, ]) %*% vcov %*% X[i, ])
     or.all.1[i] <- sprintf("%3.2f (%3.2f, %3.2f)", 
-                           coef.1[i], ci.1[i, 1], ci.1[i, 2])
+                           exp(coef.1[i]), 
+                           exp(coef.1[i] - 1.96 * se),
+                           exp(coef.1[i] + 1.96 * se))
 }
 
 or.1 <- c("", "Reference", or.all.1[4], or.all.1[5],
-          "", "Reference", or.all.1[1], or.all.1[2], or.all.1[6])
-
-tbl.1 <- data.frame(var=var, or=or.1, stringsAsFactors=FALSE)
-knitr::kable(tbl.1, col.names=c("Variable", "Odds Ratio"),
-             caption="1-1 Matching")
-coef.1 <- coef(model.1.d)
-coef.1[6] <- sum(coef.1[c(1:2, 6)])
-coef.1 <- exp(coef.1)
-ci.1 <- confint(model.1.d)
-ci.1[6, 1] <- sum(ci.1[c(1:2, 6), 1])
-ci.1[6, 2] <- sum(ci.1[c(1:2, 6), 2])
-ci.1 <- exp(ci.1)
-or.all.1 <- character(length(coef.1))
-
-for (i in 1:length(coef.1)) {
-    or.all.1[i] <- sprintf("%3.2f (%3.2f, %3.2f)", 
-                           coef.1[i], ci.1[i, 1], ci.1[i, 2])
-}
-
-or.1 <- c("", "Reference", or.all.1[4], or.all.1[5],
-          "", "Reference", or.all.1[1], or.all.1[2], or.all.1[6])
+          "", "Reference", or.all.1[1], or.all.1[2], or.all.1[6],
+          or.all.1[3])
 
 tbl.1 <- data.frame(var=var, or=or.1, stringsAsFactors=FALSE)
 knitr::kable(tbl.1, col.names=c("Variable", "Odds Ratio"),
