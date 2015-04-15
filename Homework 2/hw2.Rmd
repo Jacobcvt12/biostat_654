@@ -166,6 +166,7 @@ Part 2
 ======
 ```{r part2, echo=FALSE}
 library(survival)
+
 data <- read.table("endometrial-cancer-breslow-day.txt") %>%
     tbl_df() %>%
     rename(set=V1, case=V2, age=V3, age.group=V4, estrogen=V5,
@@ -188,37 +189,53 @@ data.1 <- data %>%
 
 model.1.a <- clogit(case ~ estrogen + gall.disease + 
                     hypertension + strata(set), data=data.1)
-model.1.b <- clogit(case ~ (estrogen + gall.disease + hypertension) *
-                    (age) + strata(set), data=data.1)
-model.1.c <- clogit(case ~ estrogen + gall.disease + hypertension *
+model.1.b <- clogit(case ~ estrogen + gall.disease + hypertension +
                     (obesity) + strata(set), data=data.1)
-model.1.d <- clogit(case ~ estrogen * gall.disease + hypertension *
+model.1.c <- clogit(case ~ estrogen * gall.disease + hypertension *
                     (age) + strata(set), data=data.1)
-model.1.e <- clogit(case ~ estrogen + gall.disease * 
-                      hypertension + strata(set), data=data.1)
+model.1.d <- clogit(case ~ estrogen * gall.disease + hypertension +
+                    obesity + strata(set), data=data.1)
+model.1.e <- clogit(case ~ estrogen * gall.disease + hypertension *
+                    obesity + strata(set), data=data.1)
+
+# LRTs
+lrt <- function(null, ext) {
+    d.1 <- -2 * null$loglik[2]
+    d.2 <- -2 * ext$loglik[2]
+    df <- length(ext$coef) - length(null$coef)
+    1 - pchisq(d.1 - d.2, df)
+}
+
+a.b <- lrt(model.1.a, model.1.b)
+a.c <- lrt(model.1.a, model.1.c)
+a.d <- lrt(model.1.a, model.1.d)
+a.e <- lrt(model.1.a, model.1.e)
 
 # 1 - 4 design
 model.4.a <- clogit(case ~ estrogen + gall.disease + 
                     hypertension + strata(set), data=data)
-model.4.b <- clogit(case ~ (estrogen + gall.disease + hypertension) *
-                    (age) + strata(set), data=data)
-model.4.c <- clogit(case ~ estrogen + gall.disease + hypertension *
+model.4.b <- clogit(case ~ estrogen + gall.disease + hypertension +
                     (obesity) + strata(set), data=data)
-model.4.d <- clogit(case ~ estrogen * gall.disease + hypertension *
+model.4.c <- clogit(case ~ estrogen * gall.disease + hypertension *
                     (age) + strata(set), data=data)
-model.4.e <- clogit(case ~ estrogen + gall.disease * 
-                      hypertension + strata(set), data=data)
-# summary(model.4.a)$logtest
-# summary(model.4.b)$logtest
-# summary(model.4.c)$logtest
-# summary(model.4.d)$logtest
-# summary(model.4.e)$logtest
+model.4.d <- clogit(case ~ estrogen * gall.disease + hypertension +
+                    obesity + strata(set), data=data)
+model.4.e <- clogit(case ~ estrogen * gall.disease + hypertension *
+                    obesity + strata(set), data=data)
+
+a.b <- lrt(model.4.a, model.4.b)
+a.c <- lrt(model.4.a, model.4.c)
+a.d <- lrt(model.4.a, model.4.d)
+d.e <- lrt(model.4.d, model.4.e)
+
 ```
 
 \newpage
 Using a matched case control study to study the effect of estrogen use on endometrial cancer. The data contained 63 matched sets, where cases were matched to 4 controls by being alive in the same community at the time of the case was diagnosed, having age within 1 year, same marital status and entering the community at roughly the same time.
 
 ```{r fig1, echo=FALSE}
+theme_set(theme_classic())
+
 est <- data %>%
     group_by(set) %>%
     summarise(estrogen.users=sum(estrogen))
@@ -232,7 +249,6 @@ ggplot(data, aes(x=reorder(set, -age, median), y=age)) +
     ylab("Age") +
     ggtitle("Figure 1") +
     scale_x_discrete(breaks=NULL) +
-#     theme_classic() +
     labs(colour="Estrogen Users")
 ```
 
@@ -240,9 +256,242 @@ As is shown above, and is expected from the description of the data, the age of 
 appear to be within one year of each other. Additionally, the data seem to be evenly distributed by age, and 
 the number of estrogen users within a group also seems evenly distributed by age.
 
+
 ```{r fig2, echo=FALSE}
+theme_set(theme_classic())
+
 ggplot(data, aes(x=age, y=case)) +
     geom_jitter(aes(colour=factor(estrogen))) +
     ggtitle("Figure 2")
-#     theme_classic()
+```
+
+\newpage
+For our final model, we adjusted for gall bladder disease, hypertension, 
+obesity (categorized as not obsese, obese, or unknown) and the
+interaction of estrogen and gall bladder disease. We chose this model
+using the likelihood ratio test. Below are the estimates for this model,
+using the full data.
+
+```{r tbl1, echo=FALSE}
+var <- c("Obesity", "\\hspace*{1em}Not Obese", "\\hspace*{1em}Obese", 
+         "\\hspace*{1em}Unknown",
+         "Estrogen and Gallbladder Disease", 
+         "\\hspace*{1em}Neither", "\\hspace*{1em}Estrogen Only", 
+         "\\hspace*{1em}Gallbladder Disease Only", "\\hspace*{1em}Both",
+         "Hypertension")
+
+coef.4 <- coef(model.4.d)
+coef.4[6] <- sum(coef.4[c(1:2, 6)])
+coef.4 <- exp(coef.4)
+ci.4 <- confint(model.4.d)
+ci.4[6, 1] <- sum(ci.4[c(1:2, 6), 1])
+ci.4[6, 2] <- sum(ci.4[c(1:2, 6), 2])
+ci.4 <- exp(ci.4)
+or.all.4 <- character(length(coef.4))
+
+for (i in 1:length(coef.4)) {
+    or.all.4[i] <- sprintf("%3.2f (%3.2f, %3.2f)", 
+                           coef.4[i], ci.4[i, 1], ci.4[i, 2])
+}
+
+or.4 <- c("", "Reference", or.all.4[4], or.all.4[5],
+          "", "Reference", or.all.4[1], or.all.4[2], or.all.4[6],
+          or.all.4[3])
+
+tbl.4 <- data.frame(var=var, or=or.4, stringsAsFactors=FALSE)
+knitr::kable(tbl.4, col.names=c("Variable", "Odds Ratio"),
+             caption="1-4 Matching")
+```
+
+We also experimented with using a case and the first control matched to
+the case in each set. The point estimates were fairly close, however the
+confidence intervals were much wider.
+
+```{r tbl2, echo=FALSE}
+coef.1 <- coef(model.1.d)
+coef.1[6] <- sum(coef.1[c(1:2, 6)])
+coef.1 <- exp(coef.1)
+ci.1 <- confint(model.1.d)
+ci.1[6, 1] <- sum(ci.1[c(1:2, 6), 1])
+ci.1[6, 2] <- sum(ci.1[c(1:2, 6), 2])
+ci.1 <- exp(ci.1)
+or.all.1 <- character(length(coef.1))
+
+for (i in 1:length(coef.1)) {
+    or.all.1[i] <- sprintf("%3.2f (%3.2f, %3.2f)", 
+                           coef.1[i], ci.1[i, 1], ci.1[i, 2])
+}
+
+or.1 <- c("", "Reference", or.all.1[4], or.all.1[5],
+          "", "Reference", or.all.1[1], or.all.1[2], or.all.1[6],
+          or.all.1[3])
+
+tbl.1 <- data.frame(var=var, or=or.1, stringsAsFactors=FALSE)
+knitr::kable(tbl.1, col.names=c("Variable", "Odds Ratio"),
+             caption="1-1 Matching")
+```
+
+In either case, we found that estrogen use increased the odds of 
+endometrial cancer. However, this associated was only statistically
+significant in the 1-4 matching.
+
+\newpage
+
+Code used for problem 2
+=======================
+
+```{r, eval=FALSE} 
+library(survival)
+
+data <- read.table("endometrial-cancer-breslow-day.txt") %>%
+    tbl_df() %>%
+    rename(set=V1, case=V2, age=V3, age.group=V4, estrogen=V5,
+           gall.disease=V6, hypertension=V7, obesity=V8, non.est=V9) %>%
+    # code disease to 0/1
+    mutate(estrogen=estrogen - 1,
+           gall.disease = gall.disease - 1,
+           hypertension = hypertension - 1,
+           obesity = obesity - 1,
+           non.est = non.est - 1,
+           # make obesity a factor
+           obesity=factor(obesity),
+           # id variable
+           id=1:n())
+    
+# 1-1 design
+data.1 <- data %>%
+    group_by(set) %>%
+    filter(id <= min(id) + 1) 
+
+model.1.a <- clogit(case ~ estrogen + gall.disease + 
+                    hypertension + strata(set), data=data.1)
+model.1.b <- clogit(case ~ estrogen + gall.disease + hypertension +
+                    (obesity) + strata(set), data=data.1)
+model.1.c <- clogit(case ~ estrogen * gall.disease + hypertension *
+                    (age) + strata(set), data=data.1)
+model.1.d <- clogit(case ~ estrogen * gall.disease + hypertension +
+                    obesity + strata(set), data=data.1)
+model.1.e <- clogit(case ~ estrogen * gall.disease + hypertension *
+                    obesity + strata(set), data=data.1)
+
+# LRTs
+lrt <- function(null, ext) {
+    d.1 <- -2 * null$loglik[2]
+    d.2 <- -2 * ext$loglik[2]
+    df <- length(ext$coef) - length(null$coef)
+    1 - pchisq(d.1 - d.2, df)
+}
+
+a.b <- lrt(model.1.a, model.1.b)
+a.c <- lrt(model.1.a, model.1.c)
+a.d <- lrt(model.1.a, model.1.d)
+a.e <- lrt(model.1.a, model.1.e)
+
+# 1 - 4 design
+model.4.a <- clogit(case ~ estrogen + gall.disease + 
+                    hypertension + strata(set), data=data)
+model.4.b <- clogit(case ~ estrogen + gall.disease + hypertension +
+                    (obesity) + strata(set), data=data)
+model.4.c <- clogit(case ~ estrogen * gall.disease + hypertension *
+                    (age) + strata(set), data=data)
+model.4.d <- clogit(case ~ estrogen * gall.disease + hypertension +
+                    obesity + strata(set), data=data)
+model.4.e <- clogit(case ~ estrogen * gall.disease + hypertension *
+                    obesity + strata(set), data=data)
+
+a.b <- lrt(model.4.a, model.4.b)
+a.c <- lrt(model.4.a, model.4.c)
+a.d <- lrt(model.4.a, model.4.d)
+d.e <- lrt(model.4.d, model.4.e)
+
+theme_set(theme_classic())
+
+est <- data %>%
+    group_by(set) %>%
+    summarise(estrogen.users=sum(estrogen))
+
+data <- data %>%
+    left_join(est, by="set")
+
+ggplot(data, aes(x=reorder(set, -age, median), y=age)) +
+    geom_boxplot(aes(colour=factor(estrogen.users))) +
+    xlab("") +
+    ylab("Age") +
+    ggtitle("Figure 1") +
+    scale_x_discrete(breaks=NULL) +
+    labs(colour="Estrogen Users")
+
+theme_set(theme_classic())
+
+ggplot(data, aes(x=age, y=case)) +
+    geom_jitter(aes(colour=factor(estrogen))) +
+    ggtitle("Figure 2")
+
+var <- c("Obesity", "\\hspace*{1em}Not Obese", "\\hspace*{1em}Obese", 
+         "\\hspace*{1em}Unknown",
+         "Estrogen and Gallbladder Disease", 
+         "\\hspace*{1em}Neither", "\\hspace*{1em}Estrogen Only", 
+         "\\hspace*{1em}Gallbladder Disease Only", "\\hspace*{1em}Both")
+
+coef.4 <- coef(model.4.d)
+coef.4[6] <- sum(coef.4[c(1:2, 6)])
+coef.4 <- exp(coef.4)
+ci.4 <- confint(model.4.d)
+ci.4[6, 1] <- sum(ci.4[c(1:2, 6), 1])
+ci.4[6, 2] <- sum(ci.4[c(1:2, 6), 2])
+ci.4 <- exp(ci.4)
+or.all.4 <- character(length(coef.4))
+
+for (i in 1:length(coef.4)) {
+    or.all.4[i] <- sprintf("%3.2f (%3.2f, %3.2f)", 
+                           coef.4[i], ci.4[i, 1], ci.4[i, 2])
+}
+
+or.4 <- c("", "Reference", or.all.4[4], or.all.4[5],
+          "", "Reference", or.all.4[1], or.all.4[2], or.all.4[6])
+
+tbl.4 <- data.frame(var=var, or=or.4, stringsAsFactors=FALSE)
+knitr::kable(tbl.4, col.names=c("Variable", "Odds Ratio"),
+             caption="1-4 Matching")
+
+coef.1 <- coef(model.1.d)
+coef.1[6] <- sum(coef.1[c(1:2, 6)])
+coef.1 <- exp(coef.1)
+ci.1 <- confint(model.1.d)
+ci.1[6, 1] <- sum(ci.1[c(1:2, 6), 1])
+ci.1[6, 2] <- sum(ci.1[c(1:2, 6), 2])
+ci.1 <- exp(ci.1)
+or.all.1 <- character(length(coef.1))
+
+for (i in 1:length(coef.1)) {
+    or.all.1[i] <- sprintf("%3.2f (%3.2f, %3.2f)", 
+                           coef.1[i], ci.1[i, 1], ci.1[i, 2])
+}
+
+or.1 <- c("", "Reference", or.all.1[4], or.all.1[5],
+          "", "Reference", or.all.1[1], or.all.1[2], or.all.1[6])
+
+tbl.1 <- data.frame(var=var, or=or.1, stringsAsFactors=FALSE)
+knitr::kable(tbl.1, col.names=c("Variable", "Odds Ratio"),
+             caption="1-1 Matching")
+coef.1 <- coef(model.1.d)
+coef.1[6] <- sum(coef.1[c(1:2, 6)])
+coef.1 <- exp(coef.1)
+ci.1 <- confint(model.1.d)
+ci.1[6, 1] <- sum(ci.1[c(1:2, 6), 1])
+ci.1[6, 2] <- sum(ci.1[c(1:2, 6), 2])
+ci.1 <- exp(ci.1)
+or.all.1 <- character(length(coef.1))
+
+for (i in 1:length(coef.1)) {
+    or.all.1[i] <- sprintf("%3.2f (%3.2f, %3.2f)", 
+                           coef.1[i], ci.1[i, 1], ci.1[i, 2])
+}
+
+or.1 <- c("", "Reference", or.all.1[4], or.all.1[5],
+          "", "Reference", or.all.1[1], or.all.1[2], or.all.1[6])
+
+tbl.1 <- data.frame(var=var, or=or.1, stringsAsFactors=FALSE)
+knitr::kable(tbl.1, col.names=c("Variable", "Odds Ratio"),
+             caption="1-1 Matching")
 ```
