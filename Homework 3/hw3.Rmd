@@ -1,0 +1,109 @@
+---
+title: Homework 3
+author: "[Jacob Carey](mailto:jcarey15@jhu.edu)"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r chunks, echo=FALSE}
+knitr::opts_chunk$set(echo=TRUE,
+                      cache=FALSE,
+                      results='asis',
+                      warning=FALSE)
+```
+
+```{r libraries}
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(lubridate)
+library(splines)
+library(zoo)
+library(xtable)
+library(survival)
+options(xtable.comment = FALSE)
+theme_set(theme_classic())
+```
+
+```{r data1}
+chicago <- read_csv("./chicago.txt") %>%
+    mutate(date=ymd(paste0("19", date)),
+           prior.pm10=lag(pm10, 1),
+           temp.lag=lag(temp, 1),
+           mean.temp=rollapply(temp.lag, 3, mean, na.rm=TRUE, 
+                               fill=NA, align="right"))
+```
+
+# Part 1
+## Problem 1
+```{r 1-1, echo=FALSE}
+ggplot(chicago, aes(x=date, y=total)) +
+    geom_point() +
+    geom_smooth()
+
+ggplot(chicago, aes(x=temp, y=total)) +
+    geom_point() +
+    geom_smooth()
+
+ggplot(chicago, aes(x=pm10, y=total)) +
+    geom_point() +
+    geom_smooth()
+```
+
+Time seems to have little to no effect on mortality. There appears to be 
+some effect by pm10, with more variability in the effect in lower pm10. 
+There is a significant effect of temperature on mortality.
+
+## Problem 2 
+```{r 1-2}
+fit <- glm(total ~ prior.pm10, family=poisson, data=chicago)
+xtable(fit)
+
+fit <- glm(total ~ temp + mean.temp, family=poisson, data=chicago)
+xtable(fit)
+```
+
+# Part 2
+## Problem 1
+```{r data2}
+untreat <- "6 8 11+ 13 16 16 19 21+ 22+ 28 28+ 29 31 35 40+ 41+ 41+ 59+ 86+ 132+"
+
+treat <- "6 9+ 9 10 11+ 12+ 13+ 17+ 18 19+ 19 20+ 22 24 28+ 31 43+ 48 51+ 57+"
+
+untreat <- unlist(strsplit(untreat, " "))
+treat <- unlist(strsplit(treat, " "))
+
+schizo <- bind_rows(data_frame(treated=0, surv=untreat),
+                    data_frame(treated=1, surv=treat)) %>%
+    mutate(id=1:n(),
+           censor=grepl("\\+", surv),
+           surv=as.integer(gsub("\\+", "", surv)),
+           status=(censor + 1) %% 2)
+
+plot(survfit(Surv(surv, status) ~ treated, data=schizo))
+```
+
+```{r data3}
+period.start <- seq(1, 51, 10)
+schizo.surv <- expand.grid(id=schizo$id, 
+                           period.start=period.start) %>%
+    arrange(id) %>%
+    mutate(period.end=ifelse(period.start < 51, period.start + 9, 150),
+           period.start=ifelse(period.start == 1, 0, period.start)) %>%
+    left_join(schizo, by="id") %>%
+    mutate(status=ifelse(surv >= period.start &
+                         surv <= period.end, 1, 0),
+           status=ifelse(censor, 0, status),
+           status=ifelse(period.start > surv, NA, status)) %>%
+    rowwise() %>%
+    mutate(pt=surv - period.start + 1,
+           pt=min(10, pt),
+           pt=max(0, pt)) %>%
+    ungroup() %>%
+    mutate(interval=paste(period.start, period.end, sep="-")) %>%
+    tbl_df()
+
+tbl <- schizo.surv %>%
+    group_by(interval, treated) %>%
+    summarise()
+```
