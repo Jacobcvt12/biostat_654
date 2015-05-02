@@ -100,10 +100,23 @@ schizo.surv <- expand.grid(id=schizo$id,
            pt=min(10, pt),
            pt=max(0, pt)) %>%
     ungroup() %>%
-    mutate(interval=paste(period.start, period.end, sep="-")) %>%
+    mutate(interval=paste(period.start, period.end, sep="-"),
+           interval=ifelse(interval == "51-150", "51+", interval),
+           treated=ifelse(treated == 0, "control", "treatment")) %>%
     tbl_df()
 
 tbl <- schizo.surv %>%
     group_by(interval, treated) %>%
-    summarise()
+    summarise(pt=sum(pt),
+              events=sum(status, na.rm=TRUE),
+              incidence=events / pt,
+              prob=(1 - events / n())) %>%
+    ungroup() %>%
+    arrange(treated, interval) %>%
+    select(treated, interval, pt:prob)
+
+knitr::kable(tbl, col.names=c("Treatment", "Interval", "Person-time",
+                              "Events", "Incidence", 
+                              "Prob Survive Past Interval"),
+             digits=4)
 ```
