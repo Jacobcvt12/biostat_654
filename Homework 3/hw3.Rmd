@@ -9,7 +9,8 @@ output: pdf_document
 knitr::opts_chunk$set(echo=TRUE,
                       cache=FALSE,
                       results='asis',
-                      warning=FALSE)
+                      warning=FALSE,
+                      message=FALSE)
 ```
 
 ```{r libraries}
@@ -31,7 +32,8 @@ chicago <- read_csv("./chicago.txt") %>%
            prior.pm10=lag(pm10, 1),
            temp.lag=lag(temp, 1),
            mean.temp=rollapply(temp.lag, 3, mean, na.rm=TRUE, 
-                               fill=NA, align="right"))
+                               fill=NA, align="right")) %>%
+    filter(complete.cases(.))
 ```
 
 # Part 1
@@ -63,9 +65,121 @@ fit <- glm(total ~ temp + mean.temp, family=poisson, data=chicago)
 xtable(fit)
 ```
 
+## Problem 3
+```{r 1-3}
+fit <- glm(total ~ prior.pm10 + date,
+           family=poisson,
+           data=chicago)
+
+fit.1 <- glm(total ~ prior.pm10 + ns(date, 1),
+             family=poisson,
+             data=chicago)
+
+fit.3 <- glm(total ~ prior.pm10 + ns(date, 3),
+             family=poisson,
+             data=chicago)
+
+fit.6 <- glm(total ~ prior.pm10 + ns(date, 6),
+             family=poisson,
+             data=chicago)
+
+fit.12 <- glm(total ~ prior.pm10 + ns(date, 12),
+              family=poisson,
+              data=chicago)
+
+smooth.stats <- function(fit) {
+    est <- coef(fit)[2]
+    ll <- confint(fit)[2, 1]
+    ul <- confint(fit)[2, 2]
+
+    data_frame(est=est, ll=ll, ul=ul)
+}
+
+smooth.time <- bind_rows(smooth.stats(fit),
+                         smooth.stats(fit.1),
+                         smooth.stats(fit.3),
+                         smooth.stats(fit.6),
+                         smooth.stats(fit.12)) %>%
+    mutate(model=c("Date", "1 df", "3 df", "6 df", "12 df"))
+
+ggplot(smooth.time, aes(x=model, y=est)) +
+    geom_point() +
+    geom_errorbar(aes(ymin=ll, ymax=ul))
+```
+Controlling for a smoother time trend yields an estimate of the relative risk of PM10 that does not change much.
+
+## Problem 4
+```{r 1-4}
+# final model
+fit <- glm(total ~ prior.pm10 + temp + temp^2 + ns(date, 6),
+           family=poisson,
+           data=chicago)
+
+std.err.pm10 <- sqrt(vcov(fit)[2, 2])
+ci.pm10 <- exp(coef(fit)[2] + c(-1, 1) * qnorm(0.975) * std.err.pm10)
+
+# independence
+y.i <- chicago$total
+mu.i <- predict(fit, type="response")
+r.i <- (y.i - mu.i) / sqrt(mu.i)
+acf(r.i)
+
+# avg residual is zero in each bin
+assume <- data_frame(y=y.i, mu=mu.i, r=r.i) %>%
+    mutate(bin=ntile(mu, 5)) %>%
+    group_by(bin) %>%
+    summarise(avg.resid=mean(r))
+
+knitr::kable(assume)
+
+# few highly influential points
+qplot(x=1:length(y.i), y=dffits(fit))
+```
+
+From the autocorrelation plot, the independence assumption appears to be met. I binned the predicted values into 5 bins (quintiles) and calucated the average Pearson residual, which I found to be $\approx 0$. Additionally, there are few highly influential points in my final model.
+
+\newpage
+
+## Problem 5
+Mortality in Chicago is a public health problem. In data recorded from
+`r min(chicago$date)` to `r max(chicago$date)`, there were on average 
+`r mean(chicago$total)` deaths per day. Particulate air pollution may be
+in part responsible for this high mortality. In our data, we saw on
+average `r mean(chicago$pm10)` 10 micrograms per cubic meter of 
+particulate air polution each day.
+
+We plotted daily mortality against particulate air pollution and saw a
+possible upward trend due to this exposure.
+
+```{r, echo=FALSE}
+ggplot(chicago, aes(x=pm10, y=total)) +
+    geom_point() +
+    geom_smooth()
+```
+
+However, it appears that temperature may be a driver of mortality, as is
+indicated in this plot of mortality versus temperature.
+
+```{r, echo=FALSE}
+ggplot(chicago, aes(x=temp, y=total)) +
+    geom_point() +
+    geom_smooth()
+```
+
+We controlled for confounders in our model, including a nonlinear
+function of temperature, as well as smooth function of time.
+
+Adjusting for temporal trend and temperature  yields an estimate of 
+`r exp(coef(fit)[2])` increased deaths per day per 10 micrograms per 
+cubic meter of particulate air pollution (CI 
+`r ci.pm10`), indicating an increased mortality due to pollution.
+
+
+\newpage
+
 # Part 2
 ## Problem 1
-```{r data2}
+```{r p2-1}
 untreat <- "6 8 11+ 13 16 16 19 21+ 22+ 28 28+ 29 31 35 40+ 41+ 41+ 59+ 86+ 132+"
 
 treat <- "6 9+ 9 10 11+ 12+ 13+ 17+ 18 19+ 19 20+ 22 24 28+ 31 43+ 48 51+ 57+"
@@ -83,7 +197,8 @@ schizo <- bind_rows(data_frame(treated=0, surv=untreat),
 plot(survfit(Surv(surv, status) ~ treated, data=schizo))
 ```
 
-```{r data3}
+## Problem 2
+```{r p2-2}
 period.start <- seq(1, 51, 10)
 schizo.surv <- expand.grid(id=schizo$id, 
                            period.start=period.start) %>%
@@ -102,21 +217,100 @@ schizo.surv <- expand.grid(id=schizo$id,
     ungroup() %>%
     mutate(interval=paste(period.start, period.end, sep="-"),
            interval=ifelse(interval == "51-150", "51+", interval),
-           treated=ifelse(treated == 0, "control", "treatment")) %>%
+           treated=ifelse(treated == 0, "control", "treatment"),
+           week.mid=period.start + 5) %>%
     tbl_df()
 
 tbl <- schizo.surv %>%
-    group_by(interval, treated) %>%
+    group_by(interval, week.mid, treated) %>%
     summarise(pt=sum(pt),
               events=sum(status, na.rm=TRUE),
               incidence=events / pt,
               prob=(1 - events / n())) %>%
     ungroup() %>%
     arrange(treated, interval) %>%
-    select(treated, interval, pt:prob)
+    select(treated, interval, week.mid, pt:prob)
 
-knitr::kable(tbl, col.names=c("Treatment", "Interval", "Person-time",
-                              "Events", "Incidence", 
-                              "Prob Survive Past Interval"),
+knitr::kable(select(tbl, -week.mid), 
+             col.names=c("Treatment", "Interval", "Person-time",
+                         "Events", "Incidence", 
+                         "Prob Survive Past Interval"),
              digits=4)
 ```
+
+## Problem 3
+```{r p2-3}
+model.a <- glm(events ~ treated + week.mid, 
+               family=poisson,
+               offset=log(pt),
+               data=tbl)
+
+tbl <- tbl %>%
+    mutate(week.sp20=ifelse(week.mid > 20, week.mid - 20, 0),
+           week.sp40=ifelse(week.mid > 40, week.mid - 40, 0))
+
+model.b <- glm(events ~ treated + week.mid + week.sp20 + week.sp40,
+               family=poisson,
+               offset=log(pt),
+               data=tbl)
+
+model.c <- glm(events ~ treated + factor(interval),
+               family=poisson,
+               offset=log(pt),
+               data=tbl)
+
+stats <- function(model) {
+    log.rr <- coef(model)[2]
+    std.err <- sqrt(vcov(model)[2, 2])
+    ci <- log.rr + c(-1, 1) * qnorm(0.975) * std.err
+    ci <- paste(round(exp(ci), 4), collapse="-")
+    df <- df.residual(model)
+    deviance <- deviance(model)
+    aic <- AIC(model)
+
+    return(data.frame(log.rr, std.err, ci, df, deviance, aic))
+}
+
+summ.tbl <- rbind(stats(model.a),
+                  stats(model.b),
+                  stats(model.c))
+rownames(summ.tbl) <- c("Model A", "Model B", "Model C")
+colnames(summ.tbl) <- c("Log Rel Risk", "Std Error",
+                        "95% CI", "Model df", "Deviance",
+                        "AIC")
+
+knitr::kable(summ.tbl)
+```
+
+## Problem 4
+```{r p2-4}
+model.a.ext <- glm(events ~ treated * (week.mid + week.sp20 + week.sp40),
+                   family=poisson,
+                   offset=log(pt),
+                   data=tbl)
+
+model.b.ext <- glm(events ~ treated * (week.mid + week.sp20 + week.sp40),
+                   family=poisson,
+                   offset=log(pt),
+                   data=tbl)
+
+model.c.ext <- glm(events ~ treated * factor(interval),
+                   family=poisson,
+                   offset=log(pt),
+                   data=tbl)
+
+lrt <- function(null, ext) {
+    d.1 <- deviance(null)
+    d.2 <- deviance(ext)
+    df <- length(ext$coef) - length(null$coef)
+    1 - pchisq(d.1 - d.2, df)
+}
+
+lrt.a <- lrt(model.a, model.a.ext)
+lrt.b <- lrt(model.b, model.b.ext)
+lrt.c <- lrt(model.c, model.c.ext)
+```
+
+
+## Problem 5
+In order to assess the proportional hazards assumption, a likelihood ratio test was conducted on three different models, each assuming a different baseline hazard function. The resulting p values of these models were `r lrt.a`, `r lrt.b`, `r lrt.c` respectively. While accepting the proportional hazards assumption based soley on these p values is not a good idea, they do suggest that proportional hazards assumption is plausible for varying baseline hazards in this data. However, it is probably better to to use a non-proportional hazards model that does not make this assumption at all.
